@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>2025增上佛七學員報到-男眾拜墊</title>
+  <title>2025增上佛七報到系統</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
   <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
@@ -10,170 +10,121 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/0.100.2/js/materialize.min.js"></script>
   <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
   <style>
-    body { background: #f5f5f5; }
-    .container { margin-top: 40px; max-width: 800px; }
-    .card-panel { padding: 20px 30px; }
-    .title { text-align: center; margin-bottom: 40px; }
-    .btn-custom { width: 100%; background-color: #2196f3; }
-    #output img { margin-top: 10px; }
-    #reader { width: 100%; max-width: 400px; margin: auto; border: 2px solid #2196f3; background: white; }
+    body { background: #f5f5f5; padding-top: 20px; }
+    .container { max-width: 600px; }
+    #reader { width: 100%; max-width: 400px; margin: auto; border: 2px solid #2196f3; background: white; border-radius: 8px; overflow: hidden; }
+    #preload { display:none; text-align:center; padding: 20px; }
   </style>
 </head>
 <body>
-  <div class="container z-depth-1 white card-panel">
-    <h4 class="title teal-text text-darken-3">
-      <i class="material-icons">search</i> 2025增上佛七學員報到-男眾拜墊
-    </h4>
-
-    <div class="row">
-      <div class="col s12 center-align">
-        <button type="button" id="scanBtn" class="btn btn-large blue waves-effect waves-light" onclick="startScan();" style="width:100%;">
-          <i class="material-icons left">qr_code_scanner</i> 開啟相機掃描
+  <div class="container">
+    <div class="card-panel z-depth-2">
+      <h5 class="center-align blue-text">學員報到系統 (男眾拜墊)</h5>
+      
+      <div id="scanControl" class="center-align" style="margin: 20px 0;">
+        <button class="btn-large blue waves-effect" onclick="startScan();" style="width:100%;">
+          <i class="material-icons left">camera_alt</i> 啟動相機掃描
         </button>
       </div>
-    </div>
 
-    <div id="reader" style="display:none;"></div>
-    <div id="preload" style="display:none; margin-top: 20px;">
-      <div class="progress"><div class="indeterminate"></div></div>
-    </div>
-    <div id="output" class="section"></div>
-
-    <hr style="margin: 30px 0;">
-
-    <form onsubmit="submitQuery(); return false;">
-      <div class="row">
-        <div class="input-field col s12 m6">
-          <i class="material-icons prefix">account_circle</i>
-          <input type="text" id="myName" name="myName">
-          <label for="myName">姓名</label>
-        </div>
-        <div class="input-field col s12 m6">
-          <i class="material-icons prefix">confirmation_number</i>
-          <input type="text" id="mySN" name="mySN">
-          <label for="mySN">報到序號</label>
-        </div>
+      <div id="reader" style="display:none;"></div>
+      
+      <div id="preload">
+        <div class="progress"><div class="indeterminate"></div></div>
       </div>
+
+      <div id="output"></div>
+
+      <hr style="margin: 30px 0;">
+
+      <p class="center-align grey-text">或使用手動輸入</p>
       <div class="row">
-        <div class="col s12">
-          <button type="submit" id="queryBtn" class="btn btn-custom waves-effect waves-light">
-            手動查詢
-          </button>
-        </div>
+        <div class="input-field col s12 m6"><input type="text" id="myName"><label for="myName">姓名</label></div>
+        <div class="input-field col s12 m6"><input type="text" id="mySN"><label for="mySN">序號</label></div>
       </div>
-    </form>
+      <button class="btn btn-block grey" onclick="submitQuery();" style="width:100%;">手動查詢</button>
+    </div>
   </div>
 
   <script>
-    // [重要] 請將此處替換為您的 Google Apps Script 正式部署網址 (/exec 結尾)
-    const GAS_URL = "https://script.google.com/macros/s/AKfycbx-G2Tmgky-kPslv2TC9gSQq8nim95fMq9fZ7IBYNYsFyTsO0nStmEeI2voqnA34wXEQQ/exec"; 
+    // [重要] 請將此處替換為您的 GAS 部署網址 (/exec 結尾)
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbwRONvTWOmYRxJFAG4GKbz979R4kL8I9zchCPzG-l8jMBoTThyUrl0kpYNRK_VHHo-i/exec"; 
 
     let qrScanner;
-    let scanned = false;
+    let isProcessing = false;
 
     function startScan() {
       document.getElementById("reader").style.display = "block";
-      scanned = false;
+      document.getElementById("output").innerHTML = "";
+      if (!qrScanner) qrScanner = new Html5Qrcode("reader");
 
-      if (!qrScanner) {
-        qrScanner = new Html5Qrcode("reader");
-      }
-
-      // 在 GitHub Pages 上，我們可以使用最高靈敏度的配置
       qrScanner.start(
         { facingMode: "environment" },
-        { 
-          fps: 20, 
-          qrbox: 280,
-          experimentalFeatures: { useBarCodeDetectorIfSupported: true }
-        },
-        qrCodeMessage => {
-          if (scanned) return;
-          scanned = true;
-
+        { fps: 25, qrbox: 280, experimentalFeatures: { useBarCodeDetectorIfSupported: true } },
+        msg => {
+          if (isProcessing) return;
+          isProcessing = true;
           if (navigator.vibrate) navigator.vibrate(100);
-
           qrScanner.stop().then(() => {
             document.getElementById("reader").style.display = "none";
-            $('#preload').show();
-            
-            // 改用 Fetch API 傳送資料
-            const url = `${GAS_URL}?action=checkin&qrValue=${encodeURIComponent(qrCodeMessage)}`;
-            fetch(url)
-              .then(res => res.json())
-              .then(res => showCheckInResult(res))
-              .catch(err => {
-                $('#preload').hide();
-                alert("報到連線失敗：" + err);
-              });
+            sendData("checkin", { qrValue: msg });
           });
-        },
-        errorMessage => {}
-      ).catch(err => {
-        alert("相機開啟失敗：\n1. 請確認網址為 https 開頭\n2. 請允許相機權限\n錯誤資訊：" + err);
-      });
+        }
+      ).catch(err => alert("相機啟動失敗：" + err));
     }
 
     function submitQuery() {
+      const data = { myName: document.getElementById("myName").value, mySN: document.getElementById("mySN").value };
+      sendData("query", data);
+    }
+
+    function sendData(action, params) {
       $('#preload').show();
       $('#output').html("");
-      const myName = document.getElementById("myName").value;
-      const mySN = document.getElementById("mySN").value;
+      
+      let queryStr = `action=${action}`;
+      for (let key in params) queryStr += `&${key}=${encodeURIComponent(params[key])}`;
 
-      // 改用 Fetch API 進行查詢
-      const url = `${GAS_URL}?action=query&myName=${encodeURIComponent(myName)}&mySN=${encodeURIComponent(mySN)}`;
-      fetch(url)
+      fetch(`${GAS_URL}?${queryStr}`)
         .then(res => res.json())
         .then(res => {
           $('#preload').hide();
-          $('#output').html(res.html);
+          isProcessing = false;
+          if (action === "checkin") renderCheckinResult(res);
+          else renderQueryResult(res);
         })
         .catch(err => {
           $('#preload').hide();
-          alert("查詢連線失敗：" + err);
+          alert("連線失敗：" + err);
         });
     }
 
-    function showCheckInResult(res) {
-      $('#preload').hide();
-      let resultHTML = "";
-
-      if (res.status === "success" || res.status === "warning") {
-        const details = res.details;
-        let statusMessage = (res.status === "success") 
-          ? `<h5 class="green-text text-darken-2">✅ 報到成功</h5>` 
-          : `<h5 class="orange-text text-darken-2">${res.message}</h5>`;
-
-        resultHTML = `
-          <div class="card-panel ${res.status === 'success' ? 'green lighten-5' : 'orange lighten-5'} ">
-            ${statusMessage}
-            <p style='font-size:large;text-align:left;border-top:1px solid gray;padding-top:10px;'>
-              報到序號：${details.sn}<br>
-              姓名：${details.name}<br>
-              樓層寢室號：${details.floor}<br>
-              床號：${details.bed}<br>
-              區域：${details.area}<br>
-              班級：${details.school}<br>
-              流水號：${details.number}
-            </p>
-          </div>
-        `;
-      } else { 
-        resultHTML = `<div class="card-panel red lighten-4"><p style='font-size:x-large;text-align:center;color:red;'>${res.message}</p></div>`;
+    function renderQueryResult(res) {
+      if (res.status === "error") {
+        $('#output').html(`<div class='card-panel red-text center'>${res.message}</div>`);
+        return;
       }
-      $('#output').html(resultHTML);
+      let html = "";
+      res.data.forEach(s => {
+        html += `<div class="card-panel grey lighten-4">
+          <p><strong>姓名：</strong>${s.name} (${s.sn})<br>班級：${s.school}<br>床號：${s.floor}-${s.bed}</p>
+          ${s.status === '已報到' ? '<span class="grey-text">已報到</span>' : `<button class="btn green" onclick="sendData('checkin', {qrValue:'${s.sn}'})">報到</button>`}
+        </div>`;
+      });
+      $('#output').html(html);
     }
 
-    function submitToSheet(sn) {
-      $('#preload').show();
-      const url = `${GAS_URL}?action=checkin&qrValue=${encodeURIComponent(sn)}`;
-      fetch(url)
-        .then(res => res.json())
-        .then(res => showCheckInResult(res))
-        .catch(err => {
-          $('#preload').hide();
-          alert("提交失敗：" + err);
-        });
+    function renderCheckinResult(res) {
+      if (res.status === "error") {
+        $('#output').html(`<div class='card-panel red lighten-4'>${res.message}</div>`);
+        return;
+      }
+      const d = res.details;
+      $('#output').html(`
+        <div class="card-panel ${res.status === 'success' ? 'green lighten-5' : 'orange lighten-5'}">
+          <h5>${res.status === 'success' ? '✅ 報到成功' : res.message}</h5>
+          <p>${d.name} (${d.sn})<br>${d.floor}樓 ${d.bed}號床</p>
+        </div>`);
     }
   </script>
 </body>
