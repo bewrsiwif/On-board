@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>2025增上佛七報到系統</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/0.100.2/css/materialize.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/0.100.2/js/materialize.min.js"></script>
+  <!-- 引入 QRCode.js 不再依賴外部 API -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+  <style>
+    body { background: #f5f5f5; padding-top: 20px; }
+    .container { max-width: 600px; }
+    #reader { width: 100%; max-width: 400px; margin: auto; border: 2px solid #2196f3; background: white; border-radius: 8px; overflow: hidden; }
+    #preload { display:none; text-align:center; padding: 20px; }
+    .qrcode-box { display: flex; justify-content: center; margin: 15px 0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card-panel z-depth-2">
+      <h5 class="center-align blue-text">學員報到系統 (男眾拜墊)</h5>
+      
+      <div id="scanControl" class="center-align" style="margin: 20px 0;">
+        <button class="btn-large blue waves-effect" onclick="startScan();" style="width:100%;">
+          <i class="material-icons left">camera_alt</i> 啟動相機掃描
+        </button>
+      </div>
+
+      <div id="reader" style="display:none;"></div>
+      
+      <div id="preload">
+        <div class="progress"><div class="indeterminate"></div></div>
+      </div>
+
+      <div id="output"></div>
+
+      <hr style="margin: 30px 0;">
+
+      <p class="center-align grey-text">或使用手動輸入</p>
+      <div class="row">
+        <div class="input-field col s12 m6"><input type="text" id="myName"><label for="myName">姓名</label></div>
+        <div class="input-field col s12 m6"><input type="text" id="mySN"><label for="mySN">序號</label></div>
+      </div>
+      <button class="btn btn-block grey" onclick="submitQuery();" style="width:100%;">手動查詢</button>
+    </div>
+  </div>
+
+  <script>
+    // [重要] 請將此處替換為您的 GAS 部署網址 (/exec 結尾)
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbxPSZw326XCPIHW3Wfcc4JJuOvvRaGrBfYjmAbFkvQm1glkesXtrn-seQh-Z29kV0apIQ/exec"; 
+
+    let qrScanner;
+    let isProcessing = false;
+
+    function startScan() {
+      document.getElementById("reader").style.display = "block";
+      document.getElementById("output").innerHTML = "";
+      
+      // 1. 初始化掃描器並指定支援格式，減少運算負擔
+      if (!qrScanner) {
+        qrScanner = new Html5Qrcode("reader", {
+          verbose: false,
+          formatsToSupport: [ 
+            Html5QrcodeSupportedFormats.QR_CODE, 
+            Html5QrcodeSupportedFormats.CODE_39, 
+            Html5QrcodeSupportedFormats.CODE_128 
+          ]
+        });
+      }
+
+      // 2. 設定長方形掃描框（適合條碼也適合 QR Code）
+      const qrboxFunction = (viewfinderWidth, viewfinderHeight) => {
+          let minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+          let width = Math.floor(minEdge * 0.8); 
+          let height = Math.floor(width * 0.6); // 長方形比例利於對焦條碼
+          return { width: width, height: height };
+      }
+
+      // 3. 啟動相機並嘗試開啟進階對焦
+      qrScanner.start(
+        { facingMode: "environment" }, 
+        { 
+          fps: 25, 
+          qrbox: qrboxFunction,
+          aspectRatio: 1.777778, // 建議 16:9，對焦更準
+          experimentalFeatures: { 
+            useBarCodeDetectorIfSupported: true // 使用硬體加速 (最快)
+          },
+          videoConstraints: {
+            focusMode: "continuous", // 強制連續自動對焦
+            advanced: [{ focusMode: "continuous" }] // 針對部分瀏覽器的進階語法
+          }
+        },
+        msg => {
+          if (isProcessing) return;
+          isProcessing = true;
+          if (navigator.vibrate) navigator.vibrate(80); // 震動回饋
+          qrScanner.stop().then(() => {
+            document.getElementById("reader").style.display = "none";
+            sendData("checkin", { qrValue: msg });
+          }).catch(() => { isProcessing = false; });
+        }
+      ).catch(err => {
+        alert("相機啟動失敗，請確認是否為 HTTPS 環境且已授予權限。");
+        isProcessing = false;
+      });
+    }
+
+    function submitQuery() {
+      const data = { myName: document.getElementById("myName").value, mySN: document.getElementById("mySN").value };
+      sendData("query", data);
+    }
+
+    function sendData(action, params) {
+      if (isProcessing) return; 
+      isProcessing = true;
+      
+      // 禁用所有按鈕防止連點
+      const btns = document.querySelectorAll('button');
+      btns.forEach(b => b.classList.add('disabled'));
+
+      $('#preload').show();
+      $('#output').html("");
+      
+      let queryStr = `action=${action}&t=${new Date().getTime()}`;
+      for (let key in params) queryStr += `&${key}=${encodeURIComponent(params[key])}`;
+
+      const finalUrl = `${GAS_URL}?${queryStr}`;
+
+      fetch(finalUrl)
+        .then(res => {
+          if (!res.ok) throw new Error("HTTP 狀態碼：" + res.status);
+          return res.json();
+        })
+        .then(res => {
+          $('#preload').hide();
+          isProcessing = false;
+          btns.forEach(b => b.classList.remove('disabled')); // 恢復按鈕
+          if (action === "checkin") renderCheckinResult(res);
+          else renderQueryResult(res);
+        })
+        .catch(err => {
+          $('#preload').hide();
+          isProcessing = false;
+          btns.forEach(b => b.classList.remove('disabled')); // 恢復按鈕
+          let errMsg = err.toString();
+          if (errMsg.includes("TypeError") || errMsg.includes("Load failed")) {
+            errMsg = "連線失敗。請檢查 GAS 部署權限是否設為「所有人」，並務必「部署為新版本」。";
+          }
+          $('#output').html(`
+            <div class='card-panel red lighten-4 red-text center'>
+              <b>連線錯誤</b><br>
+              <small>${errMsg}</small><br><br>
+              <a href="${finalUrl}" target="_blank" class="btn-small red">點此測試後端連結</a>
+            </div>`);
+        });
+    }
+
+    function renderQueryResult(res) {
+      if (res.status === "error") {
+        $('#output').html(`<div class='card-panel red lighten-4 red-text center'><b>${res.message}</b></div>`);
+        return;
+      }
+      let html = "<h6>找到以下學員：</h6>";
+      res.data.forEach((s, index) => {
+        const isAlreadyIn = (s.status === "已報到");
+        html += `
+        <div class="card white">
+          <div class="card-content" style="padding: 15px;">
+            <span class="card-title blue-text" style="font-weight:bold; font-size: 1.4rem;">${s.name} <small class="grey-text">(${s.sn})</small></span>
+            <div class="divider" style="margin: 10px 0;"></div>
+            <div class="row" style="margin-bottom:0;">
+              <div class="col s4 center-align" style="border-right: 1px solid #eee;">
+                <p class="grey-text" style="font-size: 0.8rem; margin:0;">房號</p>
+                <div style="margin:5px 0; font-weight:bold; font-size: 1.6rem; color: #424242;">${s.floor}-${s.bed}</div>
+              </div>
+              <div class="col s4 center-align" style="border-right: 1px solid #eee;">
+                <p class="grey-text" style="font-size: 0.8rem; margin:0;">座位</p>
+                <div style="margin:5px 0; font-weight:bold; font-size: 1.6rem; color: #2e7d32;">${s.seat || '-'}</div>
+              </div>
+              <div class="col s4 center-align">
+                <p class="grey-text" style="font-size: 0.8rem; margin:0;">班級</p>
+                <p style="margin:5px 0; font-size: 0.9rem; line-height: 1.2; font-weight: 500;">${s.school}</p>
+              </div>
+            </div>
+          </div>
+          <div class="card-action center-align" style="padding: 10px;">
+            <div class="qrcode-box" id="qrcode_${index}"></div>
+            ${isAlreadyIn ? 
+              `<div class="card-panel orange lighten-5 orange-text" style="margin:0; padding: 10px;">
+                <i class="material-icons left" style="margin-right:5px;">info_outline</i> 
+                此人已完成報到<br>
+                <span style="font-size: 1.4rem; font-weight: bold;">座位：${s.seat || '待查'}</span>
+               </div>` : 
+              `<button class="btn green waves-effect waves-light" style="width:100%; height: 50px; font-size: 1.2rem;" onclick="sendData('checkin', {qrValue:'${s.sn}'})">
+                <i class="material-icons left">check_circle</i> 執行報到
+               </button>`
+            }
+          </div>
+        </div>`;
+        
+        setTimeout(() => {
+          new QRCode(document.getElementById(`qrcode_${index}`), {
+            text: s.sn,
+            width: 128,
+            height: 128
+          });
+        }, 100);
+      });
+      $('#output').html(html);
+    }
+
+    function renderCheckinResult(res) {
+      if (res.status === "error") {
+        $('#output').html(`
+          <div class='card-panel red lighten-4 center'>
+            <i class="material-icons large red-text">error_outline</i>
+            <h5 class="red-text">報到失敗</h5>
+            <p>${res.message}</p>
+          </div>`);
+        return;
+      }
+      const d = res.details;
+      $('#output').html(`
+        <div class="card-panel center-align z-depth-3" style="border: 2px solid #4caf50; border-radius: 15px; background: #e8f5e9;">
+          <i class="material-icons large green-text">verified</i>
+          <h4 class="green-text" style="font-weight:bold; margin-top:0;">報到成功</h4>
+          <div class="divider"></div>
+          <div style="padding: 20px 0;">
+            <h5 style="margin: 5px 0;">${d.name} <small>(${d.sn})</small></h5>
+            <div style="margin: 20px 0;">
+              <p class="grey-text" style="margin:0;">分配床位</p>
+              <h2 style="margin:0; color:#2e7d32; font-weight:bold;">${d.floor} 房 ${d.bed} 號</h2>
+            </div>
+          </div>
+          <p class="grey-text">時間: ${res.time}</p>
+        </div>`);
+    }
+  </script>
+</body>
+</html>
